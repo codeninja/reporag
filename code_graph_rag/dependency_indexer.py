@@ -1,42 +1,69 @@
 import os
 import json
-import subprocess
+import toml
 from .graph_builder import GraphBuilder
+from .logger import logger
 
 class DependencyIndexer:
     def __init__(self, repo_path: str, graph_builder: GraphBuilder):
         self.repo_path = repo_path
         self.graph_builder = graph_builder
-
-    def index_all_files(self):
-        for root, dirs, files in os.walk(self.repo_path):
-            for file in files:
-                if file.endswith('.py'):
-                    file_path = os.path.join(root, file)
-                    self.index_python_dependencies(file_path)
-                elif file == '.json':
-                    file_path = os.path.join(root, file)
-                    self.index_javascript_dependencies(file_path)
+        self.index_dependencies = os.getenv('INDEX_DEPENDENCIES', 'True').lower() == 'true'
+        self.dependency_depth = int(os.getenv('INDEX_DEPENDENCY_DEPTH', '1'))
 
     def index_python_dependencies(self):
-        requirements_path = os.path.join(self.repo_path, 'requirements.txt')
-        if os.path.exists(requirements_path):
-            with open(requirements_path, 'r') as f:
-                dependencies = f.readlines()
-            for dep in dependencies:
-                dep = dep.strip()
-                if dep and not dep.startswith('#'):
-                    self.graph_builder.add_dependency('python', dep)
+        if not self.index_dependencies:
+            logger.info("Skipping Python dependency indexing as INDEX_DEPENDENCIES is set to False")
+            return
+
+        poetry_lock_path = os.path.join(self.repo_path, 'poetry.lock')
+        if os.path.exists(poetry_lock_path):
+            with open(poetry_lock_path, 'r') as f:
+                lock_data = toml.load(f)
+            
+            packages = lock_data.get('package', [])
+            for package in packages:
+                name = package.get('name')
+                version = package.get('version')
+                if name and version:
+                    self.graph_builder.add_dependency('python', f"{name}@{version}", depth=0)
+                    
+                    if self.dependency_depth > 0:
+                        dependencies = package.get('dependencies', {})
+                        for dep, constraint in dependencies.items():
+                            self.graph_builder.add_dependency('python', f"{dep}@{constraint}", depth=1)
+                            self.graph_builder.add_dependency_relation(f"{name}@{version}", f"{dep}@{constraint}")
+        else:
+            logger.warning(f"poetry.lock not found in {self.repo_path}")
 
     def index_javascript_dependencies(self):
-        package_json_path = os.path.join(self.repo_path, 'package.json')
-        if os.path.exists(package_json_path):
-            with open(package_json_path, 'r') as f:
-                package_data = json.load(f)
-            dependencies = package_data.get('dependencies', {})
-            dev_dependencies = package_data.get('devDependencies', {})
-            for dep, version in {**dependencies, **dev_dependencies}.items():
-                self.graph_builder.add_dependency('javascript', f"{dep}@{version}")
+        if not self.index_dependencies:
+            logger.info("Skipping JavaScript dependency indexing as INDEX_DEPENDENCIES is set to False")
+            return
+
+        package_lock_path = os.path.join(self.repo_path, 'package-lock.json')
+        if os.path.exists(package_lock_path):
+            with open(package_lock_path, 'r') as f:
+                lock_data = json.load(f)
+            
+            dependencies = lock_data.get('dependencies', {})
+            self._process_js_dependencies(dependencies, 0)
+        else:
+            logger.warning(f"package-lock.json not found in {self.repo_path}")
+
+    def _process_js_dependencies(self, dependencies, current_depth):
+        for name, info in dependencies.items():
+            version = info.get('version')
+            if version:
+                self.graph_builder.add_dependency('javascript', f"{name}@{version}", depth=current_depth)
+                
+                if current_depth < self.dependency_depth:
+                    sub_dependencies = info.get('dependencies', {})
+                    for sub_name, sub_info in sub_dependencies.items():
+                        sub_version = sub_info.get('version')
+                        if sub_version:
+                            self.graph_builder.add_dependency('javascript', f"{sub_name}@{sub_version}", depth=current_depth+1)
+                            self.graph_builder.add_dependency_relation(f"{name}@{version}", f"{sub_name}@{sub_version}")
 
     def index_all_dependencies(self):
         self.index_python_dependencies()
