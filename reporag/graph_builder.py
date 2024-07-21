@@ -96,6 +96,44 @@ class GraphBuilder:
     def _convert_ast_to_graph(tx, ast):
         """
         Convert the AST to a graph representation.
+        ## Neo4j Tuple representation of the method:
+        - Each tuple in the list represents a relationship between two nodes in the Neo4j graph database.
+        - Each node represents a token in the method.
+        - The relationship represents the type of relationship between the two nodes.
+            - 'D': Dependency relationship between two tokens.
+            - 'U': Usage relationship between two tokens.
+            - 'C': Control relationship between two tokens.
+            - 'T': Type relationship between two tokens. (Infer the type based upon the functionalty if it's not explicitly mentioned. e.g. 'x' is a string in `x = 'hello'`. Use python types like 'str', 'int', 'float', 'List[str]', etc.)
+            - 'P': Parameter relationship between two tokens. (e.g. 'x' is a parameter in `def foo(x):`)
+        - The list of tuples can be used to create the Neo4j graph representation of the method.
+        - The tuple is of the form:
+            (source_node, relationship, destination_node)
+
+        ### Example imports:
+        ```
+        from os.path import splitext
+        import subprocess
+        import json
+        ```
+
+        ### Example Neo4j Tuple representation:
+        ```
+        [('from', 'D', 'os.path'), ('from', 'D', 'import'), ('from', 'U', 'splitext'), ('import', 'D', 'subprocess'), ('import', 'D', 'json')]
+        ```
+
+        ### Example Code with Dependencies: 
+        ```
+        from os.path import splitext
+        def foo(x):
+            if x != '':
+                return splitext(x)
+        ```
+
+        ### Example Neo4j Tuple representation:
+        ```
+        [('foo', 'D', 'os.path'), ('foo', 'D', 'splitext'), ('foo', 'C', 'x'), ('x', 'T', 'str'), ('x', 'P', 'foo'), ('x', 'U', 'splitext'), ('splitext', 'T', 'List[str]')]
+        ```
         """
+            # iterate over ast, create nodes 
 
         pass
