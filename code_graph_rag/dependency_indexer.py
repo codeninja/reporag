@@ -8,6 +8,16 @@ class DependencyIndexer:
         self.repo_path = repo_path
         self.graph_builder = graph_builder
 
+    def index_all_files(self):
+        for root, dirs, files in os.walk(self.repo_path):
+            for file in files:
+                if file.endswith('.py'):
+                    file_path = os.path.join(root, file)
+                    self.index_python_dependencies(file_path)
+                elif file == '.json':
+                    file_path = os.path.join(root, file)
+                    self.index_javascript_dependencies(file_path)
+
     def index_python_dependencies(self):
         requirements_path = os.path.join(self.repo_path, 'requirements.txt')
         if os.path.exists(requirements_path):

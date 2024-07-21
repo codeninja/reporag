@@ -26,9 +26,9 @@ def main():
     llm_interface = LLMInterface()
     logger.info("All components initialized")
 
-    # Bug: The logic below is incorrect. The code is functional but the logic is incorrect.
-    # we should be indexing all files in the repository regardless of changes.
-    # and then we should also monitor for changes and update the graph, vector store, and dependencies accordingly.
+    # index all files in the repository
+    
+
     if repo_monitor.check_for_updates():
         logger.info("Updates detected in the repository. Processing changes...")
         changed_files = repo_monitor.get_changed_files()
