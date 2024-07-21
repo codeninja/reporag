@@ -28,7 +28,7 @@ def main():
 
     # Bug: The logic for the application is incorrect. The code is functional but the logic is incorrect.
     # we should be indexing all files in the repository regardless of changes.
-    # and then we should also monitor for changes.
+    # and then we should also monitor for changes and update the graph, vector store, and dependencies accordingly.
 
     # Index all files in the repository
     logger.info("Indexing all files in the repository")
