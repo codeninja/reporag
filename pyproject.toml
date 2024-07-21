@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "reporag"
+version = "0.1.0"
+description = ""
+authors = ["Dallas Pool <codeninja@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12.4,<3.13"
+grep-ast = {git = "https://github.com/paul-gauthier/grep-ast.git"}
+pyautogen = "^0.2.32"
+pygithub = "^2.3.0"
+openai = "^1.36.1"
+anthropic = "^0.31.2"
+neo4j = "^5.22.0"
+chromadb = "^0.5.4"
+python-dotenv = "^1.0.1"
+tree-sitter = "^0.22.3"
+click = "^8.1.3"
+
+[tool.poetry.scripts]
+preprocess = "scripts.preprocess:main"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = "E203, W503"
+exclude = [".venv", ".git", "__pycache__", "build", "dist", ".aider", ".aider.tags.cache.v3", ".aider.chat.history.md", ".aider.input.history"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.1"
+black = "^24.4.2"
+isort = "^5.13.2"
+flake8 = "^7.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
