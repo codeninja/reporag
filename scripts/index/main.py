@@ -1,11 +1,11 @@
 import os
 import time
 from dotenv import load_dotenv
-from code_graph_rag.repo_monitor import RepoMonitor
-from code_graph_rag.graph_builder import GraphBuilder
-from code_graph_rag.vector_store import VectorStore
-from code_graph_rag.dependency_indexer import DependencyIndexer
-from code_graph_rag.docstring_generator import DocstringGenerator
+from reporag.repo_monitor import RepoMonitor
+from reporag.graph_builder import GraphBuilder
+from reporag.vector_store import VectorStore
+from reporag.dependency_indexer import DependencyIndexer
+from reporag.docstring_generator import DocstringGenerator
 
 def process_file(file_path, graph_builder, vector_store, docstring_generator):
     print(f"Processing file: {file_path}")

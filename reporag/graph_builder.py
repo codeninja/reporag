@@ -43,6 +43,12 @@ class GraphBuilder:
             session.write_transaction(self._create_dependency_relation, parent, child)
         logger.info(f"Dependency relation added: {parent} -> {child}")
 
+    def convertAstToGraph(self, ast):
+        logger.info(f"Converting AST to graph")
+        with self.driver.session() as session:
+            session.write_transaction(self._convert_ast_to_graph, ast)
+        logger.info(f"AST converted to graph")
+
     @staticmethod
     def _create_file_node(tx, file_path):
         query = (
@@ -86,4 +92,10 @@ class GraphBuilder:
         tx.run(query, parent=parent, child=child)
         logger.debug(f"Dependency relation created: {parent} -> {child}")
 
-# Add more methods as needed for building and updating the graph
+    @staticmethod
+    def _convert_ast_to_graph(tx, ast):
+        """
+        Convert the AST to a graph representation.
+        """
+
+        pass

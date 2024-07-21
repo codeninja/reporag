@@ -36,4 +36,4 @@ RUN poetry run pip install git+https://github.com/paul-gauthier/grep-ast.git
 EXPOSE 8000
 
 # Run the application
-CMD ["poetry", "run", "python", "-m", "src.code_graph_rag.main"]
+CMD ["poetry", "run", "python", "-m", "src.reporag.main"]

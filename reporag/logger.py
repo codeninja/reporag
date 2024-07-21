@@ -1,7 +1,7 @@
 import logging
 
 def setup_logger():
-    logger = logging.getLogger('code_graph_rag')
+    logger = logging.getLogger('reporag')
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
@@ -11,7 +11,7 @@ def setup_logger():
     logger.addHandler(ch)
     
     # File handler
-    fh = logging.FileHandler('code_graph_rag.log')
+    fh = logging.FileHandler('reporag.log')
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     

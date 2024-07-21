@@ -1,23 +1,37 @@
-# src/code_graph_rag/code_context.py
+# src/reporag/code_context.py
+from os.path import splitext
+from .models.code_context import CodeContext
+import ast
 
-from grep_ast import TreeContext, filename_to_lang
+import subprocess
+import json
 
-def get_file_context(file_path: str) -> str:
-    """
-    Get the context of a specific file using grep-ast.
-    
+def get_file_context(file_path: str) -> CodeContext:
+    """ 
+    - Parses the file into AST structure with the ast module 
+    - then parses the AST structure into a graph tuple representation. (see neo4j_tuple_instructions)
+    - then parses any dependencies in the file into a graph tuple representation. (see neo4j_tuple_instructions)
+    - then 
     :param file_path: Path to the code file
-    :return: A string containing the code context
+    :return: A CodeContext object
     """
     with open(file_path, 'r') as file:
         code = file.read()
     
-    lang = filename_to_lang(file_path)
-    if not lang:
-        return "Unable to determine language for file"
-    
-    context = TreeContext(file_path, code)
-    return context.format()
+    file_name = splitext(file_path)[0]
+    print('file_name', file_name)
+    lang = splitext(file_path)[1][1:]
+    parsedAst = ast.parse(code, type_comments=True)
+    print('ast', ast.dump(parsedAst))
+    context = CodeContext(
+        name=file_name,
+        path=file_path,
+        source=code,
+        ast=parsedAst,
+        graph=[],
+        depGraph=[],
+        summary=""
+    )
 
 def get_code_context(file_path: str, line_number: int) -> str:
     """

@@ -59,4 +59,4 @@ services:
   #   volumes:
   #     - .:/app
   #     - ${REPO_PATH}:/repo
-  #   command: ["python", "-m", "src.code_graph_rag.main"]
+  #   command: ["python", "-m", "src.reporag.main"]
