@@ -1,6 +1,7 @@
 import os
 import json
 import toml
+import fnmatch
 from .graph_builder import GraphBuilder
 from .logger import logger
 
@@ -10,9 +11,22 @@ class DependencyIndexer:
         self.graph_builder = graph_builder
         self.index_dependencies = os.getenv('INDEX_DEPENDENCIES', 'True').lower() == 'true'
         self.dependency_depth = int(os.getenv('INDEX_DEPENDENCY_DEPTH', '1'))
+        self.index_pattern = os.getenv('INDEX_PATTERN', '*.py')
+        self.ignore_pattern = os.getenv('IGNORE_PATTERN', '.git|__pycache__|*.pyc|*.pyo|.venv')
 
     def index_all_files(self):
-        return
+        for root, dirs, files in os.walk(self.repo_path):
+            dirs[:] = [d for d in dirs if not self._should_ignore(d)]
+            for file in files:
+                if self._should_index(file):
+                    file_path = os.path.join(root, file)
+                    self.graph_builder.add_file_to_graph(file_path)
+
+    def _should_index(self, file_name):
+        return fnmatch.fnmatch(file_name, self.index_pattern) and not self._should_ignore(file_name)
+
+    def _should_ignore(self, path):
+        return any(fnmatch.fnmatch(path, pattern) for pattern in self.ignore_pattern.split('|'))
 
     def index_python_dependencies(self):
         if not self.index_dependencies:
@@ -69,7 +83,26 @@ class DependencyIndexer:
                             self.graph_builder.add_dependency_relation(f"{name}@{version}", f"{sub_name}@{sub_version}")
 
     def index_all_dependencies(self):
+        if not self.index_dependencies:
+            logger.info("Skipping dependency indexing as INDEX_DEPENDENCIES is set to False")
+            return
+
+        self.index_all_files()
         self.index_python_dependencies()
         self.index_javascript_dependencies()
+
+    def index_file_dependencies(self, file_path):
+        if file_path.endswith('.py'):
+            self.index_python_file_dependencies(file_path)
+        elif file_path.endswith('.js'):
+            self.index_javascript_file_dependencies(file_path)
+
+    def index_python_file_dependencies(self, file_path):
+        # Implement logic to index Python file dependencies
+        pass
+
+    def index_javascript_file_dependencies(self, file_path):
+        # Implement logic to index JavaScript file dependencies
+        pass
 
 # Add more methods as needed for indexing dependencies
