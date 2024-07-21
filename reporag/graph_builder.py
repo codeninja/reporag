@@ -1,6 +1,7 @@
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
 import os
+import ast
 from .code_context import get_code_context
 from .logger import logger
 
@@ -43,10 +44,10 @@ class GraphBuilder:
             session.write_transaction(self._create_dependency_relation, parent, child)
         logger.info(f"Dependency relation added: {parent} -> {child}")
 
-    def convertAstToGraph(self, ast):
+    def convertAstToGraph(self, ast_tree):
         logger.info(f"Converting AST to graph")
         with self.driver.session() as session:
-            session.write_transaction(self._convert_ast_to_graph, ast)
+            session.write_transaction(self._convert_ast_to_graph, ast_tree)
         logger.info(f"AST converted to graph")
 
     @staticmethod
@@ -93,54 +94,53 @@ class GraphBuilder:
         logger.debug(f"Dependency relation created: {parent} -> {child}")
 
     @staticmethod
-    def _convert_ast_to_graph(tx, ast):
+    def _convert_ast_to_graph(tx, ast_tree):
         """
         Convert the AST to a graph representation in Neo4j.
         """
         def create_node(node_type, name):
             query = (
                 "MERGE (n:ASTNode {type: $type, name: $name}) "
-                "RETURN id(n) as node_id"
+                "RETURN n.name as node_id"
             )
             result = tx.run(query, type=node_type, name=name)
             return result.single()["node_id"]
 
-        def create_relationship(source_id, target_id, rel_type):
+        def create_relationship(source_name, target_name, rel_type):
             query = (
-                "MATCH (s:ASTNode), (t:ASTNode) "
-                "WHERE id(s) = $source_id AND id(t) = $target_id "
+                "MATCH (s:ASTNode {name: $source_name}), (t:ASTNode {name: $target_name}) "
                 "MERGE (s)-[r:" + rel_type + "]->(t)"
             )
-            tx.run(query, source_id=source_id, target_id=target_id)
+            tx.run(query, source_name=source_name, target_name=target_name)
 
-        def process_node(node, parent_id=None):
+        def process_node(node, parent_name=None):
             node_type = type(node).__name__
             node_name = getattr(node, 'name', getattr(node, 'id', str(node)))
-            node_id = create_node(node_type, node_name)
+            node_name = create_node(node_type, node_name)
 
-            if parent_id is not None:
-                create_relationship(parent_id, node_id, "CONTAINS")
+            if parent_name is not None:
+                create_relationship(parent_name, node_name, "CONTAINS")
 
             for child in ast.iter_child_nodes(node):
-                process_node(child, node_id)
+                process_node(child, node_name)
 
             # Handle specific node types
             if isinstance(node, ast.FunctionDef):
                 for arg in node.args.args:
-                    arg_id = create_node("Parameter", arg.arg)
-                    create_relationship(node_id, arg_id, "PARAMETER")
-                    create_relationship(arg_id, node_id, "BELONGS_TO")
+                    arg_name = create_node("Parameter", arg.arg)
+                    create_relationship(node_name, arg_name, "PARAMETER")
+                    create_relationship(arg_name, node_name, "BELONGS_TO")
 
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    import_id = create_node("Import", alias.name)
-                    create_relationship(node_id, import_id, "IMPORTS")
+                    import_name = create_node("Import", alias.name)
+                    create_relationship(node_name, import_name, "IMPORTS")
 
             elif isinstance(node, ast.ImportFrom):
                 module = node.module
                 for alias in node.names:
-                    import_id = create_node("ImportFrom", f"{module}.{alias.name}")
-                    create_relationship(node_id, import_id, "IMPORTS_FROM")
+                    import_name = create_node("ImportFrom", f"{module}.{alias.name}")
+                    create_relationship(node_name, import_name, "IMPORTS_FROM")
 
-        process_node(ast)
+        process_node(ast_tree)
         logger.info("AST converted to graph representation in Neo4j")
