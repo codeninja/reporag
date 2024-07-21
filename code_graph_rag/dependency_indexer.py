@@ -11,6 +11,9 @@ class DependencyIndexer:
         self.index_dependencies = os.getenv('INDEX_DEPENDENCIES', 'True').lower() == 'true'
         self.dependency_depth = int(os.getenv('INDEX_DEPENDENCY_DEPTH', '1'))
 
+    def index_all_files(self):
+        return
+
     def index_python_dependencies(self):
         if not self.index_dependencies:
             logger.info("Skipping Python dependency indexing as INDEX_DEPENDENCIES is set to False")
