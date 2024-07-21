@@ -2,6 +2,23 @@
 
 from grep_ast import TreeContext, filename_to_lang
 
+def get_file_context(file_path: str) -> str:
+    """
+    Get the context of a specific file using grep-ast.
+    
+    :param file_path: Path to the code file
+    :return: A string containing the code context
+    """
+    with open(file_path, 'r') as file:
+        code = file.read()
+    
+    lang = filename_to_lang(file_path)
+    if not lang:
+        return "Unable to determine language for file"
+    
+    context = TreeContext(file_path, code)
+    return context.format()
+
 def get_code_context(file_path: str, line_number: int) -> str:
     """
     Get the context of a specific line in a code file using grep-ast.

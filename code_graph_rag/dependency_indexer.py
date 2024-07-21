@@ -2,6 +2,7 @@ import os
 import json
 import toml
 import fnmatch
+from .code_context import get_file_context
 from .graph_builder import GraphBuilder
 from .logger import logger
 
@@ -20,6 +21,7 @@ class DependencyIndexer:
             for file in files:
                 if self._should_index(file):
                     file_path = os.path.join(root, file)
+                    context = get_file_context(file_path)
                     self.graph_builder.add_file_to_graph(file_path)
 
     def _should_index(self, file_name):
@@ -39,19 +41,22 @@ class DependencyIndexer:
                 lock_data = toml.load(f)
             
             packages = lock_data.get('package', [])
-            for package in packages:
-                name = package.get('name')
-                version = package.get('version')
-                if name and version:
-                    self.graph_builder.add_dependency('python', f"{name}@{version}", depth=0)
-                    
-                    if self.dependency_depth > 0:
-                        dependencies = package.get('dependencies', {})
-                        for dep, constraint in dependencies.items():
-                            self.graph_builder.add_dependency('python', f"{dep}@{constraint}", depth=1)
-                            self.graph_builder.add_dependency_relation(f"{name}@{version}", f"{dep}@{constraint}")
+            self.process_python_dependencies(packages, 0)
+
         else:
             logger.warning(f"poetry.lock not found in {self.repo_path}")
+
+    def process_python_dependencies(self, packages, current_depth):
+        for package in packages:
+            name = package.get('name')
+            version = package.get('version')
+            if name and version:
+                self.graph_builder.add_dependency('python', f"{name}@{version}", depth=current_depth)
+                self.graph_builder.add_dependency_relation(f"{name}@{version}", f"{dep}@{constraint}")
+                
+                if current_depth < self.dependency_depth:
+                    dependencies = package.get('dependencies', [])
+                    self.process_python_dependencies(dependencies, current_depth+1)
 
     def index_javascript_dependencies(self):
         if not self.index_dependencies:

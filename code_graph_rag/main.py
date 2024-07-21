@@ -26,48 +26,50 @@ def main():
     llm_interface = LLMInterface()
     logger.info("All components initialized")
 
-    # index all files in the repository
+    dependency_indexer.index_all_files()
     
+    # dependency_indexer.index_all_dependencies()
 
-    if repo_monitor.check_for_updates():
-        logger.info("Updates detected in the repository. Processing changes...")
-        changed_files = repo_monitor.get_changed_files()
-        # Process each changed file
-        for file_path in changed_files:
-            logger.info(f"Processing file: {file_path}")
-            # Update graph
-            graph_builder.add_file_to_graph(file_path)
-            logger.info(f"Graph updated for file: {file_path}")
+    # # index all files in the repository
+    # if repo_monitor.check_for_updates():
+    #     logger.info("Updates detected in the repository. Processing changes...")
+    #     changed_files = repo_monitor.get_changed_files()
+    #     # Process each changed file
+    #     for file_path in changed_files:
+    #         logger.info(f"Processing file: {file_path}")
+    #         # Update graph
+    #         graph_builder.add_file_to_graph(file_path)
+    #         logger.info(f"Graph updated for file: {file_path}")
 
-            # Update vector store
-            with open(file_path, 'r') as file:
-                content = file.read()
-                vector_store.add_code_snippet(file_path, content, {"file_path": file_path})
-            logger.info(f"Vector store updated for file: {file_path}")
+    #         # Update vector store
+    #         with open(file_path, 'r') as file:
+    #             content = file.read()
+    #             vector_store.add_code_snippet(file_path, content, {"file_path": file_path})
+    #         logger.info(f"Vector store updated for file: {file_path}")
 
-            # Generate docstrings if it's a Python file
-            if file_path.endswith('.py'):
-                docstring = docstring_generator.generate_docstring(file_path, "example_method", 1)
-                logger.info(f"Generated docstring for {file_path}:")
-                logger.info(docstring)
+    #         # Generate docstrings if it's a Python file
+    #         if file_path.endswith('.py'):
+    #             docstring = docstring_generator.generate_docstring(file_path, "example_method", 1)
+    #             logger.info(f"Generated docstring for {file_path}:")
+    #             logger.info(docstring)
 
-        # Update dependencies
-        dependency_indexer.index_all_dependencies()
-        logger.info("Dependencies indexed")
+    #     # Update dependencies
+    #     dependency_indexer.index_all_dependencies()
+    #     logger.info("Dependencies indexed")
 
-        logger.info("Finished processing changes.")
+    #     logger.info("Finished processing changes.")
 
-    # /bug
+    # # /bug
     
     # Example of using the LLM interface
     logger.info("Starting LLM conversation")
     assistant = llm_interface.create_assistant("CodeExpert", "You are an expert in Python and JavaScript programming.")
     user_proxy = llm_interface.create_user_proxy("User")
-    conversation = llm_interface.run_conversation(user_proxy, assistant, "Explain the code in this project. how does it .")
+    # conversation = llm_interface.run_conversation(user_proxy, assistant, "Explain the code in this project. how does it .")
 
-    logger.info("LLM Conversation Result:")
-    for message in conversation:
-        logger.info(f"{message['role']}: {message['content']}")
+    # logger.info("LLM Conversation Result:")
+    # for message in conversation:
+    #     logger.info(f"{message['role']}: {message['content']}")
 
     logger.info("RepoRAG initialization and update complete.")
 
