@@ -1,6 +1,6 @@
 import os
 from github import Github
-from github import Auth
+from github import Auth 
 from dotenv import load_dotenv
 from .code_context import search_codebase
 from .logger import logger
@@ -15,7 +15,11 @@ class RepoMonitor:
         self.auth = Auth.Token(os.getenv("GITHUB_TOKEN"))
         self.github = Github(auth=self.auth)
         self.repo = self.github.get_repo(repo_path)
-        self.last_commit_sha = self.repo.get_commits()[0].sha
+        self.last_commit_sha = self.repo.get_commits()[1].sha
+        self.head_sha = self.repo.get_commits()[0].sha
+        
+        logger.info(f"Head SHA: {self.head_sha}")
+        logger.info(f"Last commit SHA: {self.last_commit_sha}")
         logger.info("RepoMonitor initialized successfully")
 
     def check_for_updates(self):

@@ -26,6 +26,17 @@ def main():
     llm_interface = LLMInterface()
     logger.info("All components initialized")
 
+    # Bug: The logic for the application is incorrect. The code is functional but the logic is incorrect.
+    # we should be indexing all files in the repository regardless of changes.
+    # and then we should also monitor for changes.
+
+    # Index all files in the repository
+    logger.info("Indexing all files in the repository")
+    dependency_indexer.index_all_files()    
+    logger.info("All files indexed")
+
+
+
     # Check for updates in the repository
     if repo_monitor.check_for_updates():
         logger.info("Updates detected in the repository. Processing changes...")
