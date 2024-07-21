@@ -95,45 +95,52 @@ class GraphBuilder:
     @staticmethod
     def _convert_ast_to_graph(tx, ast):
         """
-        Convert the AST to a graph representation.
-        ## Neo4j Tuple representation of the method:
-        - Each tuple in the list represents a relationship between two nodes in the Neo4j graph database.
-        - Each node represents a token in the method.
-        - The relationship represents the type of relationship between the two nodes.
-            - 'D': Dependency relationship between two tokens.
-            - 'U': Usage relationship between two tokens.
-            - 'C': Control relationship between two tokens.
-            - 'T': Type relationship between two tokens. (Infer the type based upon the functionalty if it's not explicitly mentioned. e.g. 'x' is a string in `x = 'hello'`. Use python types like 'str', 'int', 'float', 'List[str]', etc.)
-            - 'P': Parameter relationship between two tokens. (e.g. 'x' is a parameter in `def foo(x):`)
-        - The list of tuples can be used to create the Neo4j graph representation of the method.
-        - The tuple is of the form:
-            (source_node, relationship, destination_node)
-
-        ### Example imports:
-        ```
-        from os.path import splitext
-        import subprocess
-        import json
-        ```
-
-        ### Example Neo4j Tuple representation:
-        ```
-        [('from', 'D', 'os.path'), ('from', 'D', 'import'), ('from', 'U', 'splitext'), ('import', 'D', 'subprocess'), ('import', 'D', 'json')]
-        ```
-
-        ### Example Code with Dependencies: 
-        ```
-        from os.path import splitext
-        def foo(x):
-            if x != '':
-                return splitext(x)
-        ```
-
-        ### Example Neo4j Tuple representation:
-        ```
-        [('foo', 'D', 'os.path'), ('foo', 'D', 'splitext'), ('foo', 'C', 'x'), ('x', 'T', 'str'), ('x', 'P', 'foo'), ('x', 'U', 'splitext'), ('splitext', 'T', 'List[str]')]
-        ```
+        Convert the AST to a graph representation in Neo4j.
         """
-            # iterate over ast, create nodes 
+        def create_node(node_type, name):
+            query = (
+                "MERGE (n:ASTNode {type: $type, name: $name}) "
+                "RETURN id(n) as node_id"
+            )
+            result = tx.run(query, type=node_type, name=name)
+            return result.single()["node_id"]
 
-        pass
+        def create_relationship(source_id, target_id, rel_type):
+            query = (
+                "MATCH (s:ASTNode), (t:ASTNode) "
+                "WHERE id(s) = $source_id AND id(t) = $target_id "
+                "MERGE (s)-[r:" + rel_type + "]->(t)"
+            )
+            tx.run(query, source_id=source_id, target_id=target_id)
+
+        def process_node(node, parent_id=None):
+            node_type = type(node).__name__
+            node_name = getattr(node, 'name', getattr(node, 'id', str(node)))
+            node_id = create_node(node_type, node_name)
+
+            if parent_id is not None:
+                create_relationship(parent_id, node_id, "CONTAINS")
+
+            for child in ast.iter_child_nodes(node):
+                process_node(child, node_id)
+
+            # Handle specific node types
+            if isinstance(node, ast.FunctionDef):
+                for arg in node.args.args:
+                    arg_id = create_node("Parameter", arg.arg)
+                    create_relationship(node_id, arg_id, "PARAMETER")
+                    create_relationship(arg_id, node_id, "BELONGS_TO")
+
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    import_id = create_node("Import", alias.name)
+                    create_relationship(node_id, import_id, "IMPORTS")
+
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module
+                for alias in node.names:
+                    import_id = create_node("ImportFrom", f"{module}.{alias.name}")
+                    create_relationship(node_id, import_id, "IMPORTS_FROM")
+
+        process_node(ast)
+        logger.info("AST converted to graph representation in Neo4j")
