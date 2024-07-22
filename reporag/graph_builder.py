@@ -8,6 +8,26 @@ from .logger import logger
 load_dotenv()
 
 class GraphBuilder:
+
+    ast_node_map = {
+        'Module': "Module",
+        'FunctionDef': "FunctionDef",
+        'AsyncFunctionDef': "AsyncFunctionDef",
+        'Lambda': "Lambda",
+        'ClassDef': "ClassDef",
+        'Import': "Import",
+        'ImportFrom': "ImportFrom",
+        'Assign': "Assign",
+        'Raise': "Raise",
+        'Try': "Try",
+        'Import': "Import",
+        'Global': "Global",
+        'Return': "Return",
+        'Attribute': "Attribute",
+    }
+
+
+
     def __init__(self):
         uri = os.getenv("NEO4J_URI")
         user = os.getenv("NEO4J_USERNAME")
@@ -44,11 +64,10 @@ class GraphBuilder:
             session.write_transaction(self._create_dependency_relation, parent, child)
         logger.info(f"Dependency relation added: {parent} -> {child}")
 
-    def convertAstToGraph(self, ast_tree):
+    def convertAstToGraph(self, ast_tree, filename):
         logger.info(f"Converting AST to graph")
         with self.driver.session() as session:
-            session.write_transaction(self._convert_ast_to_graph, ast_tree)
-        logger.info(f"AST converted to graph")
+            session.write_transaction(self._convert_ast_to_graph, ast_tree, filename)
 
     @staticmethod
     def _create_file_node(tx, file_path):
@@ -94,7 +113,7 @@ class GraphBuilder:
         logger.debug(f"Dependency relation created: {parent} -> {child}")
 
     @staticmethod
-    def _convert_ast_to_graph(tx, ast_tree):
+    def _convert_ast_to_graph(tx, ast_tree, filename):
         """
         Convert the AST to a graph representation in Neo4j.
         """
@@ -113,34 +132,97 @@ class GraphBuilder:
             )
             tx.run(query, source_name=source_name, target_name=target_name)
 
+        def process_module(node):
+            module_name = node.__class__.__name__
+            create_node("Module", module_name)
+            create_relationship(filename, module_name, "CONTAINS")
+
+        def process_class(node, parent_name):
+            class_name = node.__class__.__name__
+            create_node("ClassDef", class_name)
+            create_relationship(parent_name, class_name, "CONTAINS")
+            # map all class variables
+            for child in ast.iter_child_nodes(node):
+                pass
+
+            # map all functions
+            for child in ast.iter_child_nodes(node):
+                process_function(child, class_name)
+            
+
+
+        def process_function(node, parent_name):
+            function_name = node.__class__.__name__
+            create_node("FunctionDef", function_name)
+            create_relationship(parent_name, function_name, "CONTAINS")
+
+        def process_attribute(node, parent_name):
+            attribute_name = node.__class__.__name__
+            create_node("Attribute", attribute_name)
+            create_relationship(parent_name, attribute_name, "HAS_ATTRIBUTE")
+            create_relationship(attribute_name, parent_name, "BELONGS_TO")
+
+        def process_annotation(node, parent_name):
+            annotation_name = node.__class__.__name__
+            create_node("Annotation", annotation_name)
+            create_relationship(parent_name, annotation_name, "HAS_ANNOTATION")
+            create_relationship(annotation_name, parent_name, "BELONGS_TO")
+            
+
+        
+
         def process_node(node, parent_name=None):
+            node_name = node.__class__.__name__
             node_type = type(node).__name__
-            node_name = getattr(node, 'name', getattr(node, 'id', str(node)))
-            node_name = create_node(node_type, node_name)
+            
+            # return if node is not in ast node map
+            if node_type not in GraphBuilder.ast_node_map:
+                logger.debug(f"Skipping node: {node_type} - {node_name}")
+                return
+            else:
+                logger.info(f"Processing node: {node_type} - {node_name}")
+                logger.info(f"Parent: {parent_name}")
+                logger.info(f"Node: {ast.dump(node)}")
+
 
             if parent_name is not None:
+                create_node(node_type, node_name)
                 create_relationship(parent_name, node_name, "CONTAINS")
+                create_relationship(filename, node_name, "CONTAINS")
 
             for child in ast.iter_child_nodes(node):
                 process_node(child, node_name)
 
-            # Handle specific node types
-            if isinstance(node, ast.FunctionDef):
-                for arg in node.args.args:
-                    arg_name = create_node("Parameter", arg.arg)
-                    create_relationship(node_name, arg_name, "PARAMETER")
-                    create_relationship(arg_name, node_name, "BELONGS_TO")
+            # # Handle specific node types
+            # if isinstance(node, ast.FunctionDef):
+            #     for arg in node.args.args:
+            #         arg_name = arg.arg
+            #         create_node("Parameter", arg_name)
+            #         create_relationship(node_name, arg_name, "PARAMETER")
+            #         create_relationship(arg_name, node_name, "BELONGS_TO")
 
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    import_name = create_node("Import", alias.name)
-                    create_relationship(node_name, import_name, "IMPORTS")
+            # elif isinstance(node, ast.Import):
+            #     for alias in node.names:
+            #         import_name =   alias.name
+            #         create_node("Import", import_name)
+            #         create_relationship(node_name, import_name, "IMPORTS")
 
-            elif isinstance(node, ast.ImportFrom):
-                module = node.module
-                for alias in node.names:
-                    import_name = create_node("ImportFrom", f"{module}.{alias.name}")
-                    create_relationship(node_name, import_name, "IMPORTS_FROM")
+            # elif isinstance(node, ast.ImportFrom):
+            #     module = node.module
+            #     for alias in node.names:
+            #         import_name = f"{module}.{alias.name}"
+            #         create_node("ImportFrom", import_name)
+            #         create_relationship(node_name, parent_name, "IMPORTS_FROM")
+            #         create_relationship(node_name, import_name, "IMPORTS_FROM")
 
+            # elif isinstance(node, ast.Attribute):
+            #     attr_name = node.attr
+            #     # print(f"Attribute: {attr_name}")
+            #     create_node("Attribute", attr_name)
+            #     create_relationship(node_name, attr_name, "HAS_ATTRIBUTE")
+            #     create_relationship(attr_name, node_name, "BELONGS_TO")
+
+        
+        logger.info(f"** Processsing AST Tree for ${filename}")
+        # class names in ast module
         process_node(ast_tree)
-        logger.info("AST converted to graph representation in Neo4j")
