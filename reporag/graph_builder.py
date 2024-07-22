@@ -135,31 +135,34 @@ class GraphBuilder:
             return result.single()['Node']
 
         def create_relationship(sourceNode, targetNode, rel_type):
-            print(sourceNode, targetNode, rel_type)
-            sourceId = sourceNode.element_id
-            targetId = targetNode.element_id
-            source_name, = sourceNode.labels
-            target_name, = targetNode.labels
+            logger.info(f"Creating relationship: {sourceNode} -> {targetNode} ({rel_type})")
+            source_id = sourceNode.element_id
+            target_id = targetNode.element_id
+            source_labels = list(sourceNode.labels)
+            target_labels = list(targetNode.labels)
+            
+            if not source_labels or not target_labels:
+                logger.error(f"Missing labels: Source: {source_labels}, Target: {target_labels}")
+                return None
 
-            # use the source id and target id to map to the correct node9
+            source_label = source_labels[0]
+            target_label = target_labels[0]
+
             query = (
-                f"""MATCH (s:{source_name} {{element_id: $sourceId}}), (t:{target_name} {{element_id: $targetId}}) 
-                MERGE (s)-[r:{rel_type}]->(t)
-                """
+                f"MATCH (s:{source_label}), (t:{target_label}) "
+                f"WHERE id(s) = $source_id AND id(t) = $target_id "
+                f"MERGE (s)-[r:{rel_type}]->(t) "
+                "RETURN r"
             )
-            # source_type = type(sourceNode).__name__
-            # target_type = type(targetNode).__name__
-            # source_name = sourceNode.names[0].name
-            # target_name = targetNode.names[0].name
-
-            # query = (
-            #     f"MATCH (s:{sourceNode.element_id} {{name: $source_name}}), (t:{target_type} {{name: $target_name}}) "
-            #     "MERGE (s)-[r:" + rel_type + "]->(t)"
-            # )
-            result: tx.driver.session.R = tx.run(query, source_name=source_name, target_name=target_name, sourceId=sourceId, targetId=targetId)
-            logger.info(f"Relationship created: {source_name} -> {target_name} ({rel_type})")
-            logger.info(f"Result: {result}")
-            return result.single()
+            result = tx.run(query, source_id=source_id, target_id=target_id)
+            relationship = result.single()
+            
+            if relationship:
+                logger.info(f"Relationship created: {source_label} -> {target_label} ({rel_type})")
+            else:
+                logger.error(f"Failed to create relationship: {source_label} -> {target_label} ({rel_type})")
+            
+            return relationship
 
         def process_module(node: ast.Module):
             module_name = filename
