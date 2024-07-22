@@ -120,6 +120,8 @@ class GraphBuilder:
         def create_node(node_type, name):
             query = (
                 "MERGE (n:ASTNode {type: $type, name: $name}) "
+                "ON CREATE SET n.created = datetime() "
+                "ON MATCH SET n.last_updated = datetime() "
                 "RETURN n.name as node_id"
             )
             result = tx.run(query, type=node_type, name=name)
