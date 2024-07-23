@@ -19,12 +19,11 @@ def get_file_context(file_path: str) -> CodeContext:
         code = file.read()
     
     file_name = splitext(file_path)[0]
-    print('file_name', file_name)
     lang = splitext(file_path)[1][1:]
     parsedAst = ast.parse(code, type_comments=True)
-    print('ast', ast.dump(parsedAst))
     context = CodeContext(
         name=file_name,
+        lang=lang,
         path=file_path,
         source=code,
         ast=parsedAst,
@@ -32,6 +31,7 @@ def get_file_context(file_path: str) -> CodeContext:
         depGraph=[],
         summary=""
     )
+    return context
 
 def get_code_context(file_path: str, line_number: int) -> str:
     """

@@ -97,6 +97,7 @@ depGraph_instructions = f"""
 
 class CodeContext(BaseModel):
     name: Annotated[str, "Name of the file, method, or class: Examples: `example.py`, `example.py:Foo:bar()`"]
+    lang: Annotated[str, "Extension of the code: Examples: `py`, `js`"]
     path: Annotated[str, "Path of the file containing the code."]
     source: Annotated[str, "The source code"]
     # optional summary

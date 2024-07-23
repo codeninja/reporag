@@ -2,33 +2,50 @@ import os
 import json
 import toml
 import fnmatch
+
+from reporag.vector_store import VectorStore
 from .code_context import get_file_context
 from .graph_builder import GraphBuilder
 from .logger import logger
 
 class DependencyIndexer:
-    def __init__(self, repo_path: str, graph_builder: GraphBuilder):
+    def __init__(self, repo_path: str, graph_builder: GraphBuilder, vector_store: VectorStore):
         self.repo_path = repo_path
         self.graph_builder = graph_builder
-        self.index_dependencies = os.getenv('INDEX_DEPENDENCIES', 'True').lower() == 'true'
-        self.dependency_depth = int(os.getenv('INDEX_DEPENDENCY_DEPTH', '1'))
-        self.index_pattern = os.getenv('INDEX_PATTERN', '*.py')
-        self.ignore_pattern = os.getenv('IGNORE_PATTERN', '.git|__pycache__|*.pyc|*.pyo|.venv')
+        self.index_dependencies = os.getenv('INDEX_DEPENDENCIES').lower() == 'true'
+        self.dependency_depth = int(os.getenv('INDEX_DEPENDENCY_DEPTH'))
+        self.index_pattern = os.getenv('INDEX_PATTERN')
+        self.ignore_pattern = os.getenv('IGNORE_PATTERN')
+        self.vector_store = vector_store
 
     def index_all_files(self):
+        logger.info('-index_all_files-')
+
         for root, dirs, files in os.walk(self.repo_path):
             dirs[:] = [d for d in dirs if not self._should_ignore(d)]
             for file in files:
                 if self._should_index(file):
+                    logger.info(f"-- Indexing file: {file}")
                     file_path = os.path.join(root, file)
                     context = get_file_context(file_path)
-                    self.graph_builder.add_file_to_graph(file_path)
+                    # self.graph_builder.add_file_to_graph(file_path)
+                    self.graph_builder.convertAstToGraph(context.ast, file_path)
+                    logger.info(f"File added to graph: {file_path}")
+
+        logger.info('-/index_all_files-')
+                
 
     def _should_index(self, file_name):
         return fnmatch.fnmatch(file_name, self.index_pattern) and not self._should_ignore(file_name)
 
     def _should_ignore(self, path):
-        return any(fnmatch.fnmatch(path, pattern) for pattern in self.ignore_pattern.split('|'))
+        logger.debug(f"Checking if path should be ignored: {path}")
+        logger.debug(f"Ignore path: {path}")
+        logger.debug(f"Ignore pattern: {self.ignore_pattern}")
+
+        isMatch = any(fnmatch.fnmatch(path, pattern) for pattern in self.ignore_pattern.split('|'))
+        logger.debug(f"Is match: {isMatch}")
+        return isMatch
 
     def index_python_dependencies(self):
         if not self.index_dependencies:

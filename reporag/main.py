@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from reporag.repo_monitor import RepoMonitor
 from reporag.graph_builder import GraphBuilder
 from reporag.vector_store import VectorStore
@@ -21,7 +23,7 @@ def main():
     repo_monitor = RepoMonitor(repo_name)
     graph_builder = GraphBuilder()
     vector_store = VectorStore()
-    dependency_indexer = DependencyIndexer(repo_path, graph_builder)
+    dependency_indexer = DependencyIndexer(repo_path, graph_builder, vector_store)
     docstring_generator = DocstringGenerator(os.getenv("OPENAI_API_KEY"))
     llm_interface = LLMInterface()
     logger.info("All components initialized")

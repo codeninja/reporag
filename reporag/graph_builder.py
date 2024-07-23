@@ -1,7 +1,10 @@
-from neo4j import GraphDatabase
+
+import neo4j
+from neo4j import GraphDatabase, Transaction
 from dotenv import load_dotenv
 import os
 import ast
+
 from .code_context import get_code_context
 from .logger import logger
 
@@ -27,6 +30,7 @@ class GraphBuilder:
     }
 
 
+    file_node = None
 
     def __init__(self):
         uri = os.getenv("NEO4J_URI")
@@ -64,10 +68,10 @@ class GraphBuilder:
             session.write_transaction(self._create_dependency_relation, parent, child)
         logger.info(f"Dependency relation added: {parent} -> {child}")
 
-    def convertAstToGraph(self, ast_tree, filename):
+    def convertAstToGraph(self, ast_tree, filepath):
         logger.info(f"Converting AST to graph")
         with self.driver.session() as session:
-            session.write_transaction(self._convert_ast_to_graph, ast_tree, filename)
+            session.write_transaction(self._convert_ast_to_graph, ast_tree, filepath)
 
     @staticmethod
     def _create_file_node(tx, file_path):
@@ -113,34 +117,41 @@ class GraphBuilder:
         logger.debug(f"Dependency relation created: {parent} -> {child}")
 
     @staticmethod
-    def _convert_ast_to_graph(tx, ast_tree, filename):
+    def _convert_ast_to_graph(tx:Transaction, ast_tree, filepath):
         """
         Convert the AST to a graph representation in Neo4j.
         """
 
-        file_node = None
 
         def create_node(node_type, name, metadata: dict[str] = {}):
-
             newMetadata = f"""{{type: '{node_type}', {
                 ', '.join([f"{k}: '{v}'" for k, v in metadata.items()])
-            } name: '{name}', filename: '{filename}'}}"""
+            } name: '{name}', filepath: '{filepath}'}}"""
+
             query = f"""MERGE (n:{node_type} {newMetadata}) 
                 ON CREATE SET n.created = datetime() 
                 ON MATCH SET n.last_updated = datetime() 
                 RETURN n as Node"""
+            
+            result = tx.run(query, type=node_type, name=name, filepath=filepath)
+            node = result.single()['Node']
+            return node
+    
+        def create_relationship(sourceNode: neo4j , targetNode, rel_type):
+            print("SOURCE NODE", sourceNode)
+            print("TARGET NODE", targetNode)
 
-            logger.info(f"Query: {query} {metadata}")
-            result = tx.run(query, type=node_type, name=name, filename=filename)
-            return result.single()['Node']
-
-        def create_relationship(sourceNode, targetNode, rel_type):
-            logger.info(f"Creating relationship: {sourceNode} -> {targetNode} ({rel_type})")
-            source_id = sourceNode.element_id
-            target_id = targetNode.element_id
+            if not sourceNode or not targetNode:
+                logger.error(f"Missing nodes: Source: {sourceNode}, Target: {targetNode}")
+                return None
+            
+            source_name = sourceNode._properties['name']
+            target_name = targetNode._properties['name']
             source_labels = list(sourceNode.labels)
             target_labels = list(targetNode.labels)
+            target_filepath = targetNode._properties['filepath']
             
+
             if not source_labels or not target_labels:
                 logger.error(f"Missing labels: Source: {source_labels}, Target: {target_labels}")
                 return None
@@ -148,123 +159,111 @@ class GraphBuilder:
             source_label = source_labels[0]
             target_label = target_labels[0]
 
+            # TODO: Clean this up and pass results through transaction engine
             query = (
-                f"MATCH (s:{source_label}), (t:{target_label}) "
-                f"WHERE id(s) = $source_id AND id(t) = $target_id "
+                f"MATCH (s:{source_label} {{name: '{source_name}'}}), (t:{target_label} {{name: '{target_name}'}}) "
                 f"MERGE (s)-[r:{rel_type}]->(t) "
                 "RETURN r"
             )
-            result = tx.run(query, source_id=source_id, target_id=target_id)
-            relationship = result.single()
-            
-            if relationship:
+            result = tx.run(query, source_name=source_name, target_name=target_name, target_filepath=target_filepath, filepath=filepath)
+            logger.info(f"RELATIONSHIP QUERY: {query}, RESULT: {result.data()} {result.values()}")
+            logger.info(f"Relationship labels: {source_label} -> {target_label} ({rel_type})")
+            logger.info(f"RELATIONSHIP args: sn:{source_name}, tn:{target_name}, tf:{target_filepath}, f:{filepath}, rt:{rel_type}")
+            if result:
                 logger.info(f"Relationship created: {source_label} -> {target_label} ({rel_type})")
             else:
                 logger.error(f"Failed to create relationship: {source_label} -> {target_label} ({rel_type})")
             
-            return relationship
+            return result
 
-        def process_module(node: ast.Module):
-            module_name = filename
-            metadata = {
-                "name": filename,
-                "filename": filename
-            }
-            module_node = create_node("Module", filename)
-            logger.info(f"Module node: {module_node}")
-            create_relationship(file_node, module_node, "CONTAINS")
+        def getfilepathFromPath(filepath: str):
+            return filepath.split("/")[-1]
 
+        def process_file(filepath: str):
+            file_name = getfilepathFromPath(filepath)
+            file_node = create_node("File", file_name)
+            logger.info(f"File node created: {file_name}: {file_node}")
+            return file_node
+        
 
+        def process_module(node: ast.Module, parent_node):
+            file_name = getfilepathFromPath(filepath)
+            module_node = create_node("Module", file_name)
             
+            logger.info(f"Module node created: {module_node}")
+            if parent_node:
+                create_relationship(parent_node, module_node, "CONTAINS")
+            
+            if GraphBuilder.file_node:
+                create_relationship(GraphBuilder.file_node, module_node, "CONTAINS")
 
-        def process_import(node: ast.Import, parent_name):
+            return module_node
+
+
+        def process_import(node: ast.Import, parent_node):
+            print("IMPORT ast", ast.dump(node))
             import_name = node.names[0].name
-            importNode = create_node("Import", import_name)
-            create_relationship(filename, import_name, "IMPORTS")
-            create_relationship(parent_name, import_name, "IMPORTS")
+            print('import name', import_name)
+            import_node = create_node("Import", import_name)
+            print('import node', import_node)
+            create_relationship(import_node, parent_node, "IMPORTEDBY")
+            create_relationship(parent_node, import_node, "IMPORTS")
 
-        def process_class(node: ast.ClassDef, parent_name):
+        def process_class(node: ast.ClassDef, parent_node):
             class_name = node.__class__.__name__
             create_node("process_class", class_name)
-            create_relationship(parent_name, class_name, "CONTAINS")
-            # # map all class variables
-            # for child in ast.iter_child_nodes(node):
-            #     pass
-
-            # # map all functions
-            # for child in ast.iter_child_nodes(node):
-            #     process_function(child, class_name)
-            
-
+            create_relationship(parent_node, class_name, "CONTAINS") 
+            create_relationship(class_name, parent_node, "BELONGS_TO")         
 
         def process_function(node: ast.FunctionDef, parent_node):
             function_name = node.__class__.__name__
             function_node = create_node("process_function", function_name)
             create_relationship(parent_node, function_node, "CONTAINS")
             create_relationship(function_node, parent_node, "BELONGS_TO")
-            create_relationship(file_node, function_node, "CONTAINS")
+            create_relationship(GraphBuilder.file_node, function_node, "CONTAINS")
 
-        def process_attribute(node: ast.Attribute, parent_name):
+        def process_attribute(node: ast.Attribute, parent_node):
             attribute_name = node.__class__.__name__
             create_node("process_attribute", attribute_name)
-            create_relationship(parent_name, attribute_name, "HAS_ATTRIBUTE")
-            create_relationship(attribute_name, parent_name, "BELONGS_TO")
+            create_relationship(parent_node, attribute_name, "HAS_ATTRIBUTE")
+            create_relationship(attribute_name, parent_node, "BELONGS_TO")
 
-        def process_annotation(node: ast.AnnAssign, parent_name):
+        def process_annotation(node: ast.AnnAssign, parent_node):
             annotation_name = node.__class__.__name__
             create_node("process_annotation", annotation_name)
-            create_relationship(parent_name, annotation_name, "HAS_ANNOTATION")
-            create_relationship(annotation_name, parent_name, "BELONGS_TO")
+            create_relationship(parent_node, annotation_name, "HAS_ANNOTATION")
+            create_relationship(annotation_name, parent_node, "BELONGS_TO")
             
-        def process_node(node, parent_node=None):
+        def process_child(node, parent_node=None):
             node_name = node.__class__.__name__
             node_type = type(node).__name__
             self_node = None
+            file_node = GraphBuilder.file_node
 
-            parent_name = parent_node.__class__.__name__
-            parent_type = type(parent_node).__name__
-            
             # return if node is not in ast node map
             if node_type not in GraphBuilder.ast_node_map:
-                logger.debug(f"Skipping node: {node_type} - {node_name}")
+                logger.info(f"Node type not found: {node_type}")
                 return
-            else:
-                logger.info(f"Processing node: {node_type} - {node_name} - {parent_name}")
-                logger.info(f"Parent: {parent_name}")
-                logger.info(f"Node: {ast.dump(node)}")
 
-
-            self_node = create_node(node_type, node_name)
-            print("SELF NODE", self_node)
-
-            if parent_node is not None:
-                print("PARENT NODE", parent_node)
-                create_relationship(parent_node, self_node, "CONTAINS")
-                create_relationship(file_node, self_node, "CONTAINS")
-
-            for child in ast.iter_child_nodes(node):
-                logger.info(f"Processing child: {child}")
-                logger.info(f"Parent: {node_name}")
-                process_node(child, self_node)
-
+            logger.info(f"Processing node: {node_name} - {node_type}")
             # handle node type
             if node_type == "Module":
-                process_module(node)
+                self_node = process_module(node, parent_node)                
 
-            # elif node_type == "Import":
-            #     process_import(node, parent_name)                
+            elif node_type == "Import":
+                self_node = process_import(node, parent_node)                
 
             # elif node_type == "ClassDef":
-            #     process_class(node, parent_name)
+            #     self_node = process_class(node, parent_node)
 
             # elif node_type == "FunctionDef":
-            #     process_function(node, parent_name)
+            #     self_node = process_function(node, parent_node)
 
             # elif node_type == "Attribute":
-            #     process_attribute(node, parent_name)
+            #     self_node = process_attribute(node, parent_node)
 
             # elif node_type == "AnnAssign":
-            #     process_annotation(node, parent_name)
+            #     self_node = process_annotation(node, parent_node)
 
             # # Handle specific node types
             # if isinstance(node, ast.FunctionDef):
@@ -295,9 +294,29 @@ class GraphBuilder:
             #     create_relationship(node_name, attr_name, "HAS_ATTRIBUTE")
             #     create_relationship(attr_name, node_name, "BELONGS_TO")
 
-        
-        logger.info(f"** Processsing AST Tree for ${filename}")
-        file_node = create_node("File", filename)
 
+            # if parent_node is not None:
+            #     logger.info(f"Creating relationship: {parent_node} -> {self_node} (CONTAINS)")
+            #     create_relationship(parent_node, self_node, "CONTAINS")
+                
+            #     logger.info(f"Creating relationship: {self_node} -> {parent_node} (BELONGS_TO)")
+            #     create_relationship(GraphBuilder.file_node, self_node, "CONTAINS")  
+
+
+            for child in ast.iter_child_nodes(node):
+                print('---')
+                print("CHILD", child, type(child).__name__)
+                print('node', node)
+                print('file_node', file_node)
+                print('ast_node_map', GraphBuilder.ast_node_map.keys())
+                child_type = child.__class__.__name__
+                # if the child exists in the ast node map
+                if child_type in GraphBuilder.ast_node_map.keys():
+                    print('PROCESSING CHILD', child)
+                    process_child(child, self_node)
+
+        
+        logger.info(f"** Parsing AST Tree for ${filepath}")
         # class names in ast module
-        process_node(ast_tree, file_node)
+        GraphBuilder.file_node = process_file(filepath)
+        process_child(ast_tree, GraphBuilder.file_node)
