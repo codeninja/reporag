@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.12.4,<3.13"
 grep-ast = {git = "https://github.com/paul-gauthier/grep-ast.git"}
-pyautogen = "^0.2.32"
+ag2 = "^0.2.32"
 openai = "^1.36.1"
 anthropic = "^0.31.2"
 neo4j = "^5.22.0"
